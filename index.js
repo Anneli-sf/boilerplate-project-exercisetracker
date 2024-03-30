@@ -4,7 +4,6 @@ const app = express();
 const cors = require('cors');
 require('dotenv').config();
 const sqlite3 = require('sqlite3').verbose();
-// const { promisify } = require('util');
 
 app.use(cors());
 app.use(express.urlencoded({ extended: true }));
@@ -13,7 +12,6 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/views/index.html')
 });
 
-
 const db = new sqlite3.Database(':memory:', (err) => {
   if (err) {
     console.error('Error connecting to database:', err.message);
@@ -21,7 +19,6 @@ const db = new sqlite3.Database(':memory:', (err) => {
     console.log('Connected to database');
   }
 });
-// const useAsync = promisify(db.run.bind(db));
 
 //USER
 db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -40,6 +37,10 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
 app.post("/api/users", async (req, res) => {
 
   const { username } = req.body;
+
+  if (!username) {
+    return res.status(400).json({ error: 'Username cannot be empty' });
+  }
 
   new Promise((resolve, reject) => {
     db.run('INSERT INTO users (username) VALUES (?)', [username], function(err) {
@@ -78,7 +79,25 @@ app.post("/api/users", async (req, res) => {
 });
 
 
-
+//get users (User[])
+app.get("/api/users", (req, res) => {
+  new Promise((resolve, reject) => {
+    db.all(`SELECT * FROM users`, (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  })
+    .then(users => {
+      res.status(200).json(users);
+    })
+    .catch(err => {
+      console.error('Error getting users', err.message);
+      res.status(500).json({ err: 'server error' });
+    });
+});
 
 
 
