@@ -1,4 +1,3 @@
-
 const express = require('express');
 const app = express();
 const cors = require('cors');
@@ -20,7 +19,7 @@ const db = new sqlite3.Database(':memory:', (err) => {
   }
 });
 
-//USER
+//create tables
 db.run(`CREATE TABLE IF NOT EXISTS users (
   _id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL
@@ -32,17 +31,24 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
   }
 });
 
-
-//add User
-app.post("/api/users", async (req, res) => {
-
-  const { username } = req.body;
-
-  if (!username) {
-    return res.status(400).json({ error: 'Username cannot be empty' });
+db.run(`CREATE TABLE IF NOT EXISTS exercises (
+  _id INTEGER PRIMARY KEY AUTOINCREMENT,
+  userId INTEGER NOT NULL,
+  description TEXT NOT NULL,
+  duration INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  FOREIGN KEY (userId) REFERENCES users(_id)
+)`, (err) => {
+  if (err) {
+    console.error('Error creating exercises table:', err.message);
+  } else {
+    console.log('Exercises table created successfully');
   }
+});
 
-  new Promise((resolve, reject) => {
+//requests
+async function addUser(username) {
+  return new Promise((resolve, reject) => {
     db.run('INSERT INTO users (username) VALUES (?)', [username], function(err) {
       if (err) {
         reject(err);
@@ -50,34 +56,49 @@ app.post("/api/users", async (req, res) => {
         resolve();
       }
     });
-  })
-    .then(() => {
-      return new Promise((resolve, reject) => {
-        db.get('SELECT last_insert_rowid() AS lastID', (err, row) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(row);
-          }
-        });
-      });
-    })
-    .then(result => {
-      const userId = result.lastID;
-      console.log(`User ${username} with id ${userId} was added`);
-      res.status(200).json({ id: userId, username: username });
-    })
-    .catch(err => {
-      if (err.code === 'SQLITE_CONSTRAINT') {
-        console.error('Username is not unique:', err.message);
-        res.status(400).json({ err: 'Username is not unique' });
+  });
+}
+
+async function getLastId() {
+  return new Promise((resolve, reject) => {
+    db.get('SELECT last_insert_rowid() AS lastID', (err, row) => {
+      if (err) {
+        reject(err);
       } else {
-        console.error('Error adding User:', err.message);
-        res.status(500).json({ err: 'server error' });
+        resolve(row);
       }
     });
-});
+  });
+}
 
+app.post("/api/users", async (req, res) => {
+  const { username } = req.body;
+
+  if (!username) {
+    return res.status(400).json({ error: 'Username cannot be empty' });
+  }
+
+  try {
+    
+    await addUser(username);
+
+    const result = await getLastId();
+    const userId = result.lastID;
+
+    console.log(`User ${username} with id ${userId} was added`);
+    res.status(200).json({ id: userId, username: username });
+
+  } catch (err) {
+    
+    if (err.code === 'SQLITE_CONSTRAINT') {
+      console.error('Username is not unique:', err.message);
+      res.status(400).json({ err: 'Username is not unique' });
+    } else {
+      console.error('Error adding User:', err.message);
+      res.status(500).json({ err: 'server error' });
+    }
+  }
+});
 
 //get users (User[])
 app.get("/api/users", (req, res) => {
@@ -99,22 +120,6 @@ app.get("/api/users", (req, res) => {
     });
 });
 
-db.run(`CREATE TABLE IF NOT EXISTS exercises (
-  _id INTEGER PRIMARY KEY AUTOINCREMENT,
-  userId INTEGER NOT NULL,
-  description TEXT NOT NULL,
-  duration INTEGER NOT NULL,
-  date TEXT NOT NULL,
-  FOREIGN KEY (userId) REFERENCES users(_id)
-)`, (err) => {
-  if (err) {
-    console.error('Error creating exercises table:', err.message);
-  } else {
-    console.log('Exercises table created successfully');
-  }
-});
-
-//post /api/users/:_id/exercises
 app.post("/api/users/:_id/exercises", async (req, res) => {
   const userId = req.params._id;
   const { description, duration, date } = req.body;
@@ -162,10 +167,8 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
   }
 });
 
-
-
 //handle server
-const listener = app.listen(process.env.PORT || 3001, () => {
+const listener = app.listen(process.env.PORT || 3000, () => {
   console.log('Your app is listening on port ' + listener.address().port)
 });
 
