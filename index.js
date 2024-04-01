@@ -22,7 +22,7 @@ const db = new sqlite3.Database(':memory:', (err) => {
 
 //USER
 db.run(`CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  _id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL
 )`, (err) => {
   if (err) {
@@ -97,6 +97,69 @@ app.get("/api/users", (req, res) => {
       console.error('Error getting users', err.message);
       res.status(500).json({ err: 'server error' });
     });
+});
+
+db.run(`CREATE TABLE IF NOT EXISTS exercises (
+  _id INTEGER PRIMARY KEY AUTOINCREMENT,
+  userId INTEGER NOT NULL,
+  description TEXT NOT NULL,
+  duration INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  FOREIGN KEY (userId) REFERENCES users(_id)
+)`, (err) => {
+  if (err) {
+    console.error('Error creating exercises table:', err.message);
+  } else {
+    console.log('Exercises table created successfully');
+  }
+});
+
+//post /api/users/:_id/exercises
+app.post("/api/users/:_id/exercises", async (req, res) => {
+  const userId = req.params._id;
+  const { description, duration, date } = req.body;
+
+  if (!description || !duration) {
+    return res.status(400).json({ error: 'Description and duration are required' });
+  }
+
+  const exerciseDate = date ? new Date(date) : new Date();
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      db.run('INSERT INTO exercises (userId, description, duration, date) VALUES (?, ?, ?, ?)',
+        [userId, description, duration, exerciseDate.toISOString()], function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(this.lastID);
+          }
+        });
+    });
+
+    const user = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM users WHERE _id = ?', [userId], (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row);
+        }
+      });
+    });
+
+    const exercise = {
+      _id: result,
+      username: user.username,
+      description,
+      duration: parseInt(duration),
+      date: exerciseDate.toDateString()
+    };
+
+    res.status(200).json(exercise);
+  } catch (err) {
+    console.error('Error adding exercise:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 
