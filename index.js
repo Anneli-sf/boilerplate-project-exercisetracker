@@ -89,7 +89,7 @@ app.post("/api/users", async (req, res) => {
     res.status(200).json({ id: userId, username: username });
 
   } catch (err) {
-    
+
     if (err.code === 'SQLITE_CONSTRAINT') {
       console.error('Username is not unique:', err.message);
       res.status(400).json({ err: 'Username is not unique' });
@@ -120,18 +120,34 @@ app.get("/api/users", (req, res) => {
     });
 });
 
+
+//post api/users/:_id/exercises
 app.post("/api/users/:_id/exercises", async (req, res) => {
   const userId = req.params._id;
   const { description, duration, date } = req.body;
 
   if (!description || !duration) {
-    return res.status(400).json({ error: 'Description and duration are required' });
+    return res.status(400).json({ error: 'Please, enter description/duration' });
   }
 
   const exerciseDate = date ? new Date(date) : new Date();
 
   try {
-    const result = await new Promise((resolve, reject) => {
+    const foundedUser = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM users WHERE _id = ?', [userId], (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row);
+        }
+      });
+    });
+
+    if (!foundedUser) {
+      return res.status(404).json({ error: 'User was not found' });
+    }
+
+    const foundedId = await new Promise((resolve, reject) => {
       db.run('INSERT INTO exercises (userId, description, duration, date) VALUES (?, ?, ?, ?)',
         [userId, description, duration, exerciseDate.toISOString()], function(err) {
           if (err) {
@@ -142,18 +158,8 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
         });
     });
 
-    const user = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM users WHERE _id = ?', [userId], (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row);
-        }
-      });
-    });
-
     const exercise = {
-      _id: result,
+      _id: foundedId,
       username: user.username,
       description,
       duration: parseInt(duration),
@@ -161,11 +167,16 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
     };
 
     res.status(200).json(exercise);
+
   } catch (err) {
     console.error('Error adding exercise:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+
+// get /api/users/:_id/logs
+
 
 //handle server
 const listener = app.listen(process.env.PORT || 3000, () => {
