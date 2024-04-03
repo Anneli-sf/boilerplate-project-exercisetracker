@@ -35,7 +35,7 @@ db.run(`CREATE TABLE IF NOT EXISTS exercises (
   _id INTEGER PRIMARY KEY AUTOINCREMENT,
   userId INTEGER NOT NULL,
   description TEXT NOT NULL,
-  duration INTEGER NOT NULL,
+  duration INTEGER NOT NULL CHECK (duration > 0),
   date TEXT NOT NULL,
   FOREIGN KEY (userId) REFERENCES users(_id)
 )`, (err) => {
@@ -138,12 +138,19 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 
   const userId = req.params._id;
   const { description, duration, date } = req.body;
+ 
+  if (!duration || typeof(+duration) !== 'number' || isNaN(duration)) {
+    return res.status(400).json({ error: 'Please, enter valid duration' });
+  }
 
-  if (!description || !duration) {
-    return res.status(400).json({ error: 'Please, enter description/duration' });
+  if (!description) {
+    return res.status(400).json({ error: 'Please, enter description' });
   }
 
   const exerciseDate = date ? new Date(date) : new Date();
+  if (isNaN(exerciseDate.getTime())) {
+    return res.status(400).json({ error: 'Please, enter valid Date format yyyy-mm-dd' });
+  }
 
   try {
     const user = await findUser(userId);
@@ -206,7 +213,7 @@ app.get("/api/users/:_id/logs", async (req, res) => {
         params.push(to);
       }
 
-      query += ' ORDER BY date DESC';
+      query += ' ORDER BY date ASC';
 
       if (limit) {
         query += ' LIMIT ?';
