@@ -138,8 +138,8 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 
   const userId = req.params._id;
   const { description, duration, date } = req.body;
- 
-  if (!duration || typeof(+duration) !== 'number' || isNaN(duration)) {
+
+  if (!duration || typeof (+duration) !== 'number' || isNaN(duration)) {
     return res.status(400).json({ error: 'Please, enter valid duration' });
   }
 
@@ -187,6 +187,30 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 });
 
 // get /api/users/:_id/logs
+async function countExercises(query, params) {
+  return new Promise((resolve, reject) => {
+    db.get(`SELECT COUNT(*) AS count FROM (${query})`, params, (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row.count);
+      }
+    });
+  });
+}
+
+async function getExercises(query, params) {
+  return new Promise((resolve, reject) => {
+    db.all(query, params, (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
 app.get("/api/users/:_id/logs", async (req, res) => {
   const userId = +req.params._id;
 
@@ -198,36 +222,30 @@ app.get("/api/users/:_id/logs", async (req, res) => {
 
     const { from, to, limit } = req.query;
 
-    const exercises = await new Promise((resolve, reject) => {
-      let query = 'SELECT * FROM exercises WHERE userId = ?';
-      let params = [userId];
+    let query = 'SELECT * FROM exercises WHERE userId = ?';
+    let params = [userId];
 
-      if (from && to) {
-        query += ' AND date BETWEEN ? AND ?';
-        params.push(from, to);
-      } else if (from) {
-        query += ' AND date >= ?';
-        params.push(from);
-      } else if (to) {
-        query += ' AND date <= ?';
-        params.push(to);
-      }
+    if (from && to) {
+      query += ' AND date BETWEEN ? AND ?';
+      params.push(from, to);
+    } else if (from) {
+      query += ' AND date >= ?';
+      params.push(from);
+    } else if (to) {
+      query += ' AND date <= ?';
+      params.push(to);
+    }
 
-      query += ' ORDER BY date ASC';
+    const count = await countExercises(query, params);
 
-      if (limit) {
-        query += ' LIMIT ?';
-        params.push(limit);
-      }
+    query += ' ORDER BY date ASC';
 
-      db.all(query, params, (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows);
-        }
-      });
-    });
+    if (limit) {
+      query += ' LIMIT ?';
+      params.push(limit);
+    }
+
+    const exercises = await getExercises(query, params);
 
     if (!exercises.length) {
       return res.status(404).json({ error: 'There are no exercises for this user' });
@@ -238,8 +256,6 @@ app.get("/api/users/:_id/logs", async (req, res) => {
       duration: exercise.duration,
       date: new Date(exercise.date).toDateString()
     }));
-
-    const count = logs.length;
 
     const userLog = {
       username: user.username,
