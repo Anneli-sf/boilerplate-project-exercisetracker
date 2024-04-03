@@ -49,7 +49,7 @@ db.run(`CREATE TABLE IF NOT EXISTS exercises (
 //requests
 async function addUser(username) {
   return new Promise((resolve, reject) => {
-    db.run('INSERT INTO users (username) VALUES (?)', [username], function(err) {
+    db.run('INSERT INTO users (username) VALUES (?)', [username], function (err) {
       if (err) {
         reject(err);
       } else {
@@ -79,7 +79,7 @@ app.post("/api/users", async (req, res) => {
   }
 
   try {
-    
+
     await addUser(username);
 
     const result = await getLastId();
@@ -120,9 +120,22 @@ app.get("/api/users", (req, res) => {
     });
 });
 
+//find user by Id
+async function findUser(userId) {
+  return new Promise((resolve, reject) => {
+    db.get('SELECT * FROM users WHERE _id = ?', [userId], (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row);
+      }
+    });
+  });
+}
 
 //post api/users/:_id/exercises
 app.post("/api/users/:_id/exercises", async (req, res) => {
+
   const userId = req.params._id;
   const { description, duration, date } = req.body;
 
@@ -133,33 +146,25 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
   const exerciseDate = date ? new Date(date) : new Date();
 
   try {
-    const foundedUser = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM users WHERE _id = ?', [userId], (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row);
-        }
-      });
-    });
+    const user = await findUser(userId);
 
-    if (!foundedUser) {
+    if (!user) {
       return res.status(404).json({ error: 'User was not found' });
     }
 
-    const foundedId = await new Promise((resolve, reject) => {
+    const resId = await new Promise((resolve, reject) => {
       db.run('INSERT INTO exercises (userId, description, duration, date) VALUES (?, ?, ?, ?)',
-        [userId, description, duration, exerciseDate.toISOString()], function(err) {
+        [userId, description, duration, exerciseDate.toISOString()], function (err) {
           if (err) {
             reject(err);
           } else {
-            resolve(this.lastID);
+            resolve(userId);
           }
         });
     });
 
     const exercise = {
-      _id: foundedId,
+      _id: +resId,
       username: user.username,
       description,
       duration: parseInt(duration),
@@ -174,8 +179,75 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
   }
 });
 
-
 // get /api/users/:_id/logs
+app.get("/api/users/:_id/logs", async (req, res) => {
+  const userId = +req.params._id;
+
+  try {
+    const user = await findUser(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User was not founded' });
+    }
+
+    const { from, to, limit } = req.query;
+
+    const exercises = await new Promise((resolve, reject) => {
+      let query = 'SELECT * FROM exercises WHERE userId = ?';
+      let params = [userId];
+
+      if (from && to) {
+        query += ' AND date BETWEEN ? AND ?';
+        params.push(from, to);
+      } else if (from) {
+        query += ' AND date >= ?';
+        params.push(from);
+      } else if (to) {
+        query += ' AND date <= ?';
+        params.push(to);
+      }
+
+      query += ' ORDER BY date DESC';
+
+      if (limit) {
+        query += ' LIMIT ?';
+        params.push(limit);
+      }
+
+      db.all(query, params, (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows);
+        }
+      });
+    });
+
+    if (!exercises.length) {
+      return res.status(404).json({ error: 'There are no exercises for this user' });
+    }
+
+    const logs = exercises.map(exercise => ({
+      description: exercise.description,
+      duration: exercise.duration,
+      date: new Date(exercise.date).toDateString()
+    }));
+
+    const count = logs.length;
+
+    const userLog = {
+      username: user.username,
+      count: count,
+      _id: +userId,
+      log: logs
+    };
+
+    res.status(200).json(userLog);
+
+  } catch (err) {
+    console.error('Error getting logs:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 
 //handle server
@@ -192,3 +264,7 @@ process.on('SIGINT', async () => {
     process.exit(0);
   });
 });
+
+
+
+
