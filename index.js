@@ -225,14 +225,13 @@ app.get("/api/users/:_id/logs", async (req, res) => {
     let query = 'SELECT * FROM exercises WHERE userId = ?';
     let params = [userId];
 
-    if (from && to) {
-      query += ' AND date BETWEEN ? AND ?';
-      params.push(from, to);
-    } else if (from) {
+    if (from) {
       query += ' AND date >= ?';
       params.push(from);
-    } else if (to) {
-      query += ' AND date <= ?';
+    }
+
+    if (to) {
+      query += ' AND date < date(?, "+1 day")';
       params.push(to);
     }
 
